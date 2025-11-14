@@ -1,0 +1,112 @@
+<html>
+    <head>
+        <title>Lab Fat q1</title>
+    </head>
+    <body>
+        <script>
+            const fs = require("fs");
+            const readline = require("readline");
+
+            const INPUT_FILE = "yesterday.csv";
+            const OUTPUT_FILE = "charges_report.csv";
+
+            function calculate_charges(durationHours) {
+                if (durationHours <= 0) return { error: true, charge: 0 };
+
+                const hours = Math.ceil(durationHours);
+
+                const fullDays = Math.floor(hours / 24);
+                const remainingHours = hours % 24;
+
+                let charge = fullDays * 10;  
+                if (remainingHours > 0) {
+                    if (remainingHours <= 3) {
+                        charge += 2.0;
+                    } else {
+                        charge += 2.0 + 0.5 * (remainingHours - 3);
+                    }
+                    if (charge - fullDays * 10 > 10) {
+                        charge = fullDays * 10 + 10;
+                    }
+                }
+
+                return { error: false, charge: charge };
+            }
+
+            async function processFile() {
+                const rl = readline.createInterface({
+                    input: fs.createReadStream(INPUT_FILE),
+                    crlfDelay: Infinity
+                });
+
+                let outputRows = ["customer_id,duration_hours,charge,error_flag"];
+
+                let totalReceipts = 0;
+                let maxChargeCount = 0;
+                let longestDuration = 0;
+                let longestCustomers = [];
+
+                for await (const line of rl) {
+                    if (!line.trim()) continue;
+
+                    const [customer_id, entry_ts, exit_ts] = line.split(",");
+
+                    const start = new Date(entry_ts);
+                    const end = new Date(exit_ts);
+
+                    const durationMs = end - start;
+
+                    let durationHours = durationMs / (1000 * 60 * 60);
+
+                    let error = false;
+                    if (isNaN(durationHours) || durationHours <= 0) {
+                        error = true;
+                        durationHours = 0;
+                    }
+
+                    const { error: feeError, charge } = calculate_charges(durationHours);
+
+                    const finalError = error || feeError;
+
+                    const roundedHours = Math.ceil(durationHours);
+
+                    if (!finalError) {
+                        totalReceipts += charge;
+
+                        if (charge === 10) {
+                            maxChargeCount++;
+                        }
+
+                        if (roundedHours > longestDuration) {
+                            longestDuration = roundedHours;
+                            longestCustomers = [customer_id];
+                        } else if (roundedHours === longestDuration) {
+                            longestCustomers.push(customer_id);
+                        }
+                    }
+
+                    outputRows.push(
+                        `${customer_id},${roundedHours},${charge.toFixed(2)},${finalError}`
+                    );
+                }
+
+                fs.writeFileSync(OUTPUT_FILE, outputRows.join("\n"), "utf8");
+
+                const customerCount = outputRows.length - 1;
+                const avgCharge = customerCount > 0 ? totalReceipts / customerCount : 0;
+
+                console.log("\n=== Parking Fees Summary ===");
+                console.log("Total receipts: $" + totalReceipts.toFixed(2));
+                console.log("Customers charged daily max ($10): " + maxChargeCount);
+                console.log("Average charge: $" + avgCharge.toFixed(2));
+                console.log(
+                    "Longest stay (" + longestDuration + " hours):",
+                    longestCustomers.join(", ")
+                );
+            }
+
+            processFile().catch(err => console.error(err));
+
+        </script>
+    </body>
+</html>
